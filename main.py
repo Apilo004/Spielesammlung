@@ -23,8 +23,9 @@ class GameMenuScreen(Screen):
         # Button positions
         button1_pos = (200, 300)
         button2_pos = (550, 300)
-        button3_pos = (200, 100)
-        button4_pos = (550, 100)
+        button3_pos = (200, 50)
+        button4_pos = (550, 50)
+
         button_width = 300
         button_height = 200
 
@@ -46,7 +47,7 @@ class GameMenuScreen(Screen):
             size_hint=(None, None),
             size=(100, 100),
             pos_hint={'right': 1, 'top': 1},
-            background_normal='user.png'
+            background_normal='profil.png'
         )
         profile_button.bind(on_press=self.open_profile_screen)
         layout.add_widget(profile_button)
