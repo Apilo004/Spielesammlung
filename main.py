@@ -11,6 +11,23 @@ from kivy.core.window import Window
 from kivy.graphics import Color, Rectangle, Line
 from kivy.uix.screenmanager import ScreenManager, Screen, SlideTransition
 from kivy.uix.popup import Popup
+import json
+import os
+
+USER_DATA_FILE = "users.json"
+
+def load_users():
+    if not os.path.exists(USER_DATA_FILE):
+        return {}
+    with open(USER_DATA_FILE, "r", encoding="utf-8") as f:
+        try:
+            return json.load(f)
+        except json.JSONDecodeError:
+            return {}
+
+def save_users(users):
+    with open(USER_DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(users, f, ensure_ascii=False, indent=2)
 
 class GameMenuScreen(Screen):
     def __init__(self, **kwargs):
@@ -61,6 +78,17 @@ class GameMenuScreen(Screen):
         options_button.bind(on_press=self.open_options_screen)
         layout.add_widget(options_button)
 
+        # Shop button
+        shop_button = Button(
+            size_hint=(None, None),
+            size=(100, 100),
+            pos_hint={'right': 0.9, 'top': 1},
+            background_normal='shop.png'
+        )
+        shop_button.bind(on_press=self.open_shop_screen)
+        layout.add_widget(shop_button)
+
+
         # Game buttons
         buttons = [
             ((200, 300), "Spiel 1"),
@@ -101,6 +129,10 @@ class GameMenuScreen(Screen):
     def open_options_screen(self, instance):
         self.manager.transition = SlideTransition(direction='right')
         self.manager.current = 'options'
+
+    def open_shop_screen(self, instance):
+        self.manager.transition = SlideTransition(direction='up')
+        self.manager.current = 'shop'
 
 class OptionsScreen(Screen):
     def __init__(self, **kwargs):
@@ -176,8 +208,50 @@ class OptionsScreen(Screen):
         print(f"Fenstergröße geändert auf {size}")
 
     def go_back(self, instance):
-        self.manager.transition = SlideTransition(direction='right')
+        self.manager.transition = SlideTransition(direction='left')
         self.manager.current = 'game_menu'
+
+class ShopScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.build()
+    
+    def build(self):
+        layout = FloatLayout()
+        with layout.canvas.before:
+            Color(0.5, 0, 0.5, 1)
+            self.rect = Rectangle(size=layout.size, pos=layout.pos)
+        layout.bind(size=self._update_rect, pos=self._update_rect)
+
+        header_label = Label(
+            text="Shop",
+            font_size='24sp',
+            size_hint=(0.8, 0.1),
+            pos_hint={'center_x': 0.5, 'top': 1}
+        )
+        layout.add_widget(header_label)
+
+        back_button = Button(
+            text="Zurück",
+            size_hint=(0.2, 0.1),
+            pos_hint={'center_x': 0.5, 'center_y': 0.1},
+            background_color=(0.2, 0.6, 0.8, 1),
+            background_normal=''
+        )
+        back_button.bind(on_press=self.go_back)
+        layout.add_widget(back_button)
+
+        self.add_widget(layout)
+    
+    def _update_rect(self, instance, value):
+        self.rect.pos = instance.pos
+        self.rect.size = instance.size
+
+    def go_back(self, instance):
+        self.manager.transition = SlideTransition(direction='down')
+        self.manager.current = 'game_menu'
+
+
 
 class ProfileScreen(Screen):
     def __init__(self, **kwargs):
@@ -199,25 +273,26 @@ class ProfileScreen(Screen):
         )
         layout.add_widget(header_label)
 
-        username_input = TextInput(
+        self.username_input = TextInput(
             hint_text="Benutzername",
             size_hint=(0.8, 0.1),
             pos_hint={'center_x': 0.5, 'center_y': 0.7}
         )
-        password_input = TextInput(
+        self.password_input = TextInput(
             hint_text="Passwort",
             password=True,
             size_hint=(0.8, 0.1),
             pos_hint={'center_x': 0.5, 'center_y': 0.5}
         )
-        layout.add_widget(username_input)
-        layout.add_widget(password_input)
+        layout.add_widget(self.username_input)
+        layout.add_widget(self.password_input)
 
         login_button = Button(
             text="Anmelden",
             size_hint=(0.2, 0.1),
             pos_hint={'center_x': 0.5, 'center_y': 0.3}
         )
+        login_button.bind(on_press=self.login)
         layout.add_widget(login_button)
 
         regist_button = Button(
@@ -225,7 +300,16 @@ class ProfileScreen(Screen):
             size_hint=(0.2, 0.1),
             pos_hint={'center_x': 0.25, 'center_y': 0.3}
         )
+        regist_button.bind(on_press=self.register)
         layout.add_widget(regist_button)
+
+        self.info_label = Label(
+            text="",
+            size_hint=(0.8, 0.1),
+            pos_hint={'center_x': 0.5, 'center_y': 0.2},
+            color=(1, 1, 1, 1)
+        )
+        layout.add_widget(self.info_label)
 
         back_button = Button(
             text="Zurück",
@@ -243,6 +327,34 @@ class ProfileScreen(Screen):
         self.rect.pos = instance.pos
         self.rect.size = instance.size
 
+    def login(self, instance):
+        users = load_users()
+        username = self.username_input.text.strip()
+        password = self.password_input.text.strip()
+        if username in users and users[username] == password:
+            self.info_label.text = "Erfolgreich angemeldet!"
+            self.info_label.color = (0, 1, 0, 1)
+        else:
+            self.info_label.text = "Falscher Benutzername oder Passwort!"
+            self.info_label.color = (1, 0, 0, 1)
+
+    def register(self, instance):
+        users = load_users()
+        username = self.username_input.text.strip()
+        password = self.password_input.text.strip()
+        if not username or not password:
+            self.info_label.text = "Bitte alles ausfüllen!"
+            self.info_label.color = (1, 0.5, 0, 1)
+            return
+        if username in users:
+            self.info_label.text = "Benutzer existiert bereits!"
+            self.info_label.color = (1, 0.5, 0, 1)
+        else:
+            users[username] = password
+            save_users(users)
+            self.info_label.text = "Registrierung erfolgreich!"
+            self.info_label.color = (0, 1, 0, 1)
+
     def go_back(self, instance):
         self.manager.transition = SlideTransition(direction='right')
         self.manager.current = 'game_menu'
@@ -253,6 +365,7 @@ class MyKivyApp(App):
         sm.add_widget(GameMenuScreen(name='game_menu'))
         sm.add_widget(ProfileScreen(name='profile'))
         sm.add_widget(OptionsScreen(name='options'))
+        sm.add_widget(ShopScreen(name='shop'))
         return sm
 
 if __name__ == '__main__':
