@@ -13,8 +13,10 @@ from kivy.uix.screenmanager import ScreenManager, Screen, SlideTransition
 from kivy.uix.popup import Popup
 import json
 import os
+import sqlite3
 
 USER_DATA_FILE = "users.json"
+DB_FILE = "users.db"
 
 def load_users():
     if not os.path.exists(USER_DATA_FILE):
@@ -28,6 +30,52 @@ def load_users():
 def save_users(users):
     with open(USER_DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(users, f, ensure_ascii=False, indent=2)
+
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            username TEXT PRIMARY KEY,
+            password TEXT NOT NULL,
+            email TEXT,
+            guthaben REAL DEFAULT 0,
+            punkte INTEGER DEFAULT 0
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+def register_user(username, password, email, guthaben, punkte):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    try:
+        c.execute(
+            "INSERT INTO users (username, password, email, guthaben, punkte) VALUES (?, ?, ?, ?, ?)",
+            (username, password, email, guthaben, punkte)
+        )
+        conn.commit()
+        result = True
+    except sqlite3.IntegrityError:
+        result = False
+    conn.close()
+    return result
+
+def check_login(username, password):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT * FROM users WHERE username=? AND password=?", (username, password))
+    user = c.fetchone()
+    conn.close()
+    return user
+
+def get_user_data(username):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT username, email, guthaben, punkte FROM users WHERE username=?", (username,))
+    user = c.fetchone()
+    conn.close()
+    return user
 
 class GameMenuScreen(Screen):
     def __init__(self, **kwargs):
@@ -256,69 +304,123 @@ class ShopScreen(Screen):
 class ProfileScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.build()
+        self.username = None
+        self.build_login()
 
-    def build(self):
+    def build_login(self, instance=None):
+        self.clear_widgets()
         layout = FloatLayout()
         with layout.canvas.before:
             Color(0.5, 0, 0.5, 1)
             self.rect = Rectangle(size=layout.size, pos=layout.pos)
         layout.bind(size=self._update_rect, pos=self._update_rect)
 
-        header_label = Label(
-            text="Profil",
-            font_size='24sp',
-            size_hint=(0.8, 0.1),
-            pos_hint={'center_x': 0.5, 'top': 1}
-        )
+        header_label = Label(text="Anmelden", font_size='24sp', size_hint=(0.8, 0.1), pos_hint={'center_x': 0.5, 'top': 1})
         layout.add_widget(header_label)
 
-        self.username_input = TextInput(
-            hint_text="Benutzername",
-            size_hint=(0.8, 0.1),
-            pos_hint={'center_x': 0.5, 'center_y': 0.7}
-        )
-        self.password_input = TextInput(
-            hint_text="Passwort",
-            password=True,
-            size_hint=(0.8, 0.1),
-            pos_hint={'center_x': 0.5, 'center_y': 0.5}
-        )
+        self.username_input = TextInput(hint_text="Benutzername", size_hint=(0.8, 0.08), pos_hint={'center_x': 0.5, 'center_y': 0.7})
+        self.password_input = TextInput(hint_text="Passwort", password=True, size_hint=(0.8, 0.08), pos_hint={'center_x': 0.5, 'center_y': 0.6})
         layout.add_widget(self.username_input)
         layout.add_widget(self.password_input)
 
-        login_button = Button(
-            text="Anmelden",
-            size_hint=(0.2, 0.1),
-            pos_hint={'center_x': 0.5, 'center_y': 0.3}
-        )
+        login_button = Button(text="Anmelden", size_hint=(0.35, 0.08), pos_hint={'center_x': 0.25, 'center_y': 0.45})
         login_button.bind(on_press=self.login)
         layout.add_widget(login_button)
 
-        regist_button = Button(
-            text="Registrieren",
-            size_hint=(0.2, 0.1),
-            pos_hint={'center_x': 0.25, 'center_y': 0.3}
-        )
-        regist_button.bind(on_press=self.register)
-        layout.add_widget(regist_button)
+        register_button = Button(text="Registrieren", size_hint=(0.35, 0.08), pos_hint={'center_x': 0.75, 'center_y': 0.45})
+        register_button.bind(on_press=self.build_register)
+        layout.add_widget(register_button)
 
-        self.info_label = Label(
-            text="",
-            size_hint=(0.8, 0.1),
-            pos_hint={'center_x': 0.5, 'center_y': 0.2},
-            color=(1, 1, 1, 1)
-        )
-        layout.add_widget(self.info_label)
-
+        # Zurück-Button zum Homescreen
         back_button = Button(
             text="Zurück",
-            size_hint=(0.2, 0.1),
-            pos_hint={'center_x': 0.5, 'center_y': 0.1},
+            size_hint=(0.35, 0.08),
+            pos_hint={'center_x': 0.5, 'center_y': 0.18},
             background_color=(0.2, 0.6, 0.8, 1),
             background_normal=''
         )
-        back_button.bind(on_press=self.go_back)
+        back_button.bind(on_press=self.go_home)
+        layout.add_widget(back_button)
+
+        self.info_label = Label(text="", size_hint=(0.8, 0.08), pos_hint={'center_x': 0.5, 'center_y': 0.35}, color=(1, 1, 1, 1))
+        layout.add_widget(self.info_label)
+
+        self.add_widget(layout)
+
+    def build_register(self, instance=None):
+        self.clear_widgets()
+        layout = FloatLayout()
+        with layout.canvas.before:
+            Color(0.5, 0, 0.5, 1)
+            self.rect = Rectangle(size=layout.size, pos=layout.pos)
+        layout.bind(size=self._update_rect, pos=self._update_rect)
+
+        header_label = Label(text="Registrieren", font_size='24sp', size_hint=(0.8, 0.1), pos_hint={'center_x': 0.5, 'top': 1})
+        layout.add_widget(header_label)
+
+        self.username_input = TextInput(hint_text="Benutzername", size_hint=(0.8, 0.08), pos_hint={'center_x': 0.5, 'center_y': 0.7})
+        self.password_input = TextInput(hint_text="Passwort", password=True, size_hint=(0.8, 0.08), pos_hint={'center_x': 0.5, 'center_y': 0.6})
+        self.email_input = TextInput(hint_text="E-Mail", size_hint=(0.8, 0.08), pos_hint={'center_x': 0.5, 'center_y': 0.5})
+        self.guthaben_input = TextInput(hint_text="Guthaben", size_hint=(0.8, 0.08), pos_hint={'center_x': 0.5, 'center_y': 0.4})
+        self.punkte_input = TextInput(hint_text="Punkte", size_hint=(0.8, 0.08), pos_hint={'center_x': 0.5, 'center_y': 0.3})
+
+        layout.add_widget(self.username_input)
+        layout.add_widget(self.password_input)
+        layout.add_widget(self.email_input)
+        layout.add_widget(self.guthaben_input)
+        layout.add_widget(self.punkte_input)
+
+        register_button = Button(text="Registrieren", size_hint=(0.35, 0.08), pos_hint={'center_x': 0.25, 'center_y': 0.18})
+        register_button.bind(on_press=self.register)
+        layout.add_widget(register_button)
+
+        # Zurück-Button zum Login
+        back_login_button = Button(text="Zurück", size_hint=(0.35, 0.08), pos_hint={'center_x': 0.75, 'center_y': 0.18})
+        back_login_button.bind(on_press=self.build_login)
+        layout.add_widget(back_login_button)
+
+        # Zusätzlicher Zurück-Button zum Homescreen
+        back_home_button = Button(
+            text="Home",
+            size_hint=(0.35, 0.08),
+            pos_hint={'center_x': 0.5, 'center_y': 0.08},
+            background_color=(0.2, 0.6, 0.8, 1),
+            background_normal=''
+        )
+        back_home_button.bind(on_press=self.go_home)
+        layout.add_widget(back_home_button)
+
+        self.info_label = Label(text="", size_hint=(0.8, 0.08), pos_hint={'center_x': 0.5, 'center_y': 0.1}, color=(1, 1, 1, 1))
+        layout.add_widget(self.info_label)
+
+        self.add_widget(layout)
+
+    def build_profile(self, username):
+        self.clear_widgets()
+        layout = FloatLayout()
+        with layout.canvas.before:
+            Color(0.5, 0, 0.5, 1)
+            self.rect = Rectangle(size=layout.size, pos=layout.pos)
+        layout.bind(size=self._update_rect, pos=self._update_rect)
+
+        user = get_user_data(username)
+        if user:
+            uname, email, guthaben, punkte = user
+            header_label = Label(text=f"Profil: {uname}", font_size='24sp', size_hint=(0.8, 0.1), pos_hint={'center_x': 0.5, 'top': 1})
+            layout.add_widget(header_label)
+
+            email_label = Label(text=f"E-Mail: {email}", size_hint=(0.8, 0.08), pos_hint={'center_x': 0.5, 'center_y': 0.7})
+            guthaben_label = Label(text=f"Guthaben: {guthaben}", size_hint=(0.8, 0.08), pos_hint={'center_x': 0.5, 'center_y': 0.6})
+            punkte_label = Label(text=f"Punkte: {punkte}", size_hint=(0.8, 0.08), pos_hint={'center_x': 0.5, 'center_y': 0.5})
+
+            layout.add_widget(email_label)
+            layout.add_widget(guthaben_label)
+            layout.add_widget(punkte_label)
+        else:
+            layout.add_widget(Label(text="Fehler: Nutzer nicht gefunden!", pos_hint={'center_x': 0.5, 'center_y': 0.5}))
+
+        back_button = Button(text="Abmelden", size_hint=(0.2, 0.08), pos_hint={'center_x': 0.5, 'center_y': 0.1})
+        back_button.bind(on_press=self.logout)
         layout.add_widget(back_button)
 
         self.add_widget(layout)
@@ -328,34 +430,45 @@ class ProfileScreen(Screen):
         self.rect.size = instance.size
 
     def login(self, instance):
-        users = load_users()
         username = self.username_input.text.strip()
         password = self.password_input.text.strip()
-        if username in users and users[username] == password:
-            self.info_label.text = "Erfolgreich angemeldet!"
-            self.info_label.color = (0, 1, 0, 1)
+        user = check_login(username, password)
+        if user:
+            self.username = username
+            self.build_profile(username)
         else:
             self.info_label.text = "Falscher Benutzername oder Passwort!"
             self.info_label.color = (1, 0, 0, 1)
 
     def register(self, instance):
-        users = load_users()
+        # Diese Felder gibt es nur im Login-Layout!
         username = self.username_input.text.strip()
         password = self.password_input.text.strip()
-        if not username or not password:
-            self.info_label.text = "Bitte alles ausfüllen!"
+        email = self.email_input.text.strip()
+        try:
+            guthaben = float(self.guthaben_input.text.strip())
+        except:
+            guthaben = 0.0
+        try:
+            punkte = int(self.punkte_input.text.strip())
+        except:
+            punkte = 0
+        if not username or not password or not email:
+            self.info_label.text = "Bitte alle Felder ausfüllen!"
             self.info_label.color = (1, 0.5, 0, 1)
             return
-        if username in users:
-            self.info_label.text = "Benutzer existiert bereits!"
-            self.info_label.color = (1, 0.5, 0, 1)
-        else:
-            users[username] = password
-            save_users(users)
+        if register_user(username, password, email, guthaben, punkte):
             self.info_label.text = "Registrierung erfolgreich!"
             self.info_label.color = (0, 1, 0, 1)
+        else:
+            self.info_label.text = "Benutzer existiert bereits!"
+            self.info_label.color = (1, 0.5, 0, 1)
 
-    def go_back(self, instance):
+    def logout(self, instance):
+        self.username = None
+        self.build_login()
+
+    def go_home(self, instance):
         self.manager.transition = SlideTransition(direction='right')
         self.manager.current = 'game_menu'
 
@@ -369,4 +482,5 @@ class MyKivyApp(App):
         return sm
 
 if __name__ == '__main__':
+    init_db()
     MyKivyApp().run()
