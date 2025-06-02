@@ -111,7 +111,7 @@ class GameMenuScreen(Screen):
             size_hint=(None, None),
             size=(100, 100),
             pos_hint={'right': 1, 'top': 1},
-            background_normal='profil.png'
+            background_normal='user-solid.png',
         )
         profile_button.bind(on_press=self.open_profile_screen)
         layout.add_widget(profile_button)
@@ -152,6 +152,13 @@ class GameMenuScreen(Screen):
                 background_normal=image,
                 background_down=image
             )
+            # Hellgrauer Rahmen um den Button, der sich anpasst
+            with button.canvas.after:
+                Color(0.85, 0.85, 0.85, 1)
+                button.border_line = Line(rectangle=(button.x, button.y, button.width, button.height), width=3)
+            def update_border(instance, value, btn=button):
+                btn.border_line.rectangle = (btn.x, btn.y, btn.width, btn.height)
+            button.bind(pos=update_border, size=update_border)
             button.bind(on_press=self.open_popup)
             layout.add_widget(button)
 
